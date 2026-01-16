@@ -1,3 +1,4 @@
+use std::env;
 use std::net::UdpSocket;
 use std::io::{stdin, stdout, Write};
 use std::process::exit;
@@ -12,17 +13,21 @@ use regex::Regex;
 fn main() {
     let mac_regex = Regex::new(r"([a-f0-9]{2}:){5}[a-f0-9]{2}").unwrap();
 
-    let socket = UdpSocket::bind("0.0.0.0:0").expect("Cannot open the UDP socket");
-    socket.set_broadcast(true).expect("Could not set the socket type to broadcast");
-    socket.connect("255.255.255.255:0").expect("Could not set broadcast destination");
 
-    println!("Sending broadcast from port {}", socket.local_addr().expect("Could not get UDP socket").port());
+    let mut input: String;
+    match env::args().skip(1).next() {  // Skip file name argument
+        Some(arg) => {
+            input = arg;
+        }
+        None => {
+            input = String::new();
+            print!("Enter device to wake MAC address (aa:bb:cc:dd:ee:ff): ");
+            let _ = stdout().flush();
 
-    print!("Enter device to wake MAC address (aa:bb:cc:dd:ee:ff): ");
-    let _ = stdout().flush();
+            stdin().read_line(&mut input).expect("Error while reading input");
+        }
+    }
 
-    let mut input = String::new();
-    stdin().read_line(&mut input).expect("Error while reading input");
 
     let mac = mac_regex.find(&input);
     match mac {
@@ -31,16 +36,25 @@ fn main() {
             exit(1);
         },
         Some(mac) => {
+            let socket = UdpSocket::bind("0.0.0.0:0").expect("Cannot open the UDP socket");
+            socket.set_broadcast(true).expect("Could not set the socket type to broadcast");
+            socket.connect("255.255.255.255:0").expect("Could not set broadcast destination");
+
+            println!("Sending broadcast from port {}", socket.local_addr().expect("Could not get UDP socket").port());
+
+
             let six_ff = [0xffu8; 6];
 
             let mac = mac.as_str();
             let single_bytes = mac.split(":");
 
             let array: Vec<_> = single_bytes.map(|x| {x}).collect();
-            let mut to_send: Vec<u8> = Vec::from_iter(six_ff);
+            let mut to_send: Vec<u8> = Vec::with_capacity(102);     // Preallocation of bytes since size is always 102 bytes
+            to_send.extend(six_ff);
+
             for _ in 0..16 {
                 for byte in &array {
-                    to_send.push(u8::from_str_radix(byte, 16).expect("Error during mac parsing"));
+                    to_send.push(u8::from_str_radix(byte, 16).expect("Error during MAC parsing"));
                 }
             }
 
